@@ -61,6 +61,7 @@
     const style = document.createElement("style");
     style.textContent = `
       #shadowCampaignUI {
+        right:20px;
         position:fixed; top:12px; left:12px; z-index:9000;
         color:#f8e7bd; font: bold 12px Arial,sans-serif;
         background:rgba(8,8,13,.88); border:1px solid #a77b36;
@@ -69,6 +70,19 @@
         letter-spacing:1px;
       }
       #shadowCampaignUI .gold {color:#ffd36b;font-size:15px}
+      @media (max-width:650px) {
+        #shadowCampaignUI {
+          top:62px !important;
+          right:8px !important;
+          left:auto !important;
+          max-width:155px;
+          padding:7px 9px;
+          font-size:9px;
+          letter-spacing:.4px;
+        }
+        #shadowCampaignUI .gold {font-size:11px}
+      }
+
       #shadowCampaignOverlay {
         position:fixed; inset:0; z-index:10000;
         display:none; align-items:center; justify-content:center;
