@@ -4,3 +4,10 @@ dist/
 backups/
 .env
 *.log
+
+.DS_Store
+node_modules/
+dist/
+backups/
+.env
+*.log
