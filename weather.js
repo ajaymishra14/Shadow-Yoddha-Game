@@ -1,19 +1,23 @@
 (() => {
   "use strict";
 
+  // Repeated entries create weighted random weather probabilities.
   const weatherTypes = [
+    "CLEAR", "CLEAR", "CLEAR",
+    "CLOUDY", "CLOUDY",
+    "LIGHT RAIN",
     "RAINSTORM",
     "THUNDERSTORM",
-    "FOG",
+    "FOG", "FOG",
     "SNOWSTORM",
     "DUST STORM",
     "SHADOW STORM"
   ];
 
   const weather = {
-    current: "RAINSTORM",
+    current: "CLEAR",
     elapsed: 0,
-    nextChange: 24,
+    nextChange: 45,
     particles: [],
     lightning: 0,
     lightningTimer: 4,
@@ -103,13 +107,16 @@
     const h = weather.height;
 
     switch (weather.current) {
+      case "LIGHT RAIN":
       case "RAINSTORM":
       case "THUNDERSTORM":
         return {
           x: random(0, w),
           y: random(-h, 0),
           vx: random(-5, 2),
-          vy: random(500, 900),
+          vy: weather.current === "LIGHT RAIN"
+            ? random(250, 430)
+            : random(500, 900),
           length: random(9, 22)
         };
 
@@ -157,10 +164,15 @@
     }
   }
 
+  function chooseNextWeather() {
+    let choices = weatherTypes.filter(type => type !== weather.current);
+    return choices[Math.floor(Math.random() * choices.length)];
+  }
+
   function changeWeather(type) {
     weather.current = type;
     weather.elapsed = 0;
-    weather.nextChange = random(24, 42);
+    weather.nextChange = random(35, 60);
     weather.lightning = 0;
     weather.lightningTimer = random(3, 9);
     weather.wind = random(-1, 1);
@@ -231,8 +243,11 @@
   }
 
   function drawRain(ctx, dt) {
-    ctx.strokeStyle = "rgba(170,205,255,0.55)";
-    ctx.lineWidth = 1.2;
+    const lightRain = weather.current === "LIGHT RAIN";
+    ctx.strokeStyle = lightRain
+      ? "rgba(190,215,245,0.32)"
+      : "rgba(170,205,255,0.55)";
+    ctx.lineWidth = lightRain ? 0.8 : 1.2;
     ctx.beginPath();
 
     for (const p of weather.particles) {
@@ -298,6 +313,21 @@
     }
   }
 
+  function drawClouds(ctx) {
+    const t = weather.elapsed;
+    ctx.save();
+    ctx.fillStyle = "rgba(75,85,105,0.16)";
+    for (let i = 0; i < 5; i++) {
+      const x = ((i * 245 + t * 9) % (weather.width + 220)) - 110;
+      const y = 35 + (i % 3) * 32;
+      ctx.beginPath();
+      ctx.ellipse(x, y, 90, 17, 0, 0, Math.PI * 2);
+      ctx.ellipse(x + 35, y - 8, 45, 20, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   function drawFog(ctx) {
     const gradient = ctx.createLinearGradient(
       0, weather.height * 0.35,
@@ -346,10 +376,7 @@
     weather.elapsed += dt;
 
     if (weather.elapsed >= weather.nextChange) {
-      const next = weatherTypes[
-        Math.floor(Math.random() * weatherTypes.length)
-      ];
-      changeWeather(next);
+      changeWeather(chooseNextWeather());
     }
 
     if (weather.current === "THUNDERSTORM") {
@@ -380,6 +407,13 @@
     update(dt);
 
     switch (weather.current) {
+      case "CLEAR":
+        // Clear skies: no weather particles or overlay.
+        break;
+      case "CLOUDY":
+        drawClouds(ctx);
+        break;
+      case "LIGHT RAIN":
       case "RAINSTORM":
         drawRain(ctx, dt);
         break;
