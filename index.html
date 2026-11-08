@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#090a0e">
+  <title>Shadow Yoddha | The Eternal Run</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="game-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-symbol">ॐ</div>
+        <div>
+          <h1>SHADOW <span>YODDHA</span></h1>
+          <p>THE ETERNAL RUN</p>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button id="soundBtn" class="icon-btn" aria-label="Toggle sound">♫</button>
+        <button id="pauseBtn" class="icon-btn" aria-label="Pause game">Ⅱ</button>
+      </div>
+    </header>
+
+    <section class="hud">
+      <div class="stat"><small>SCORE</small><strong id="score">000000</strong></div>
+      <div class="stat"><small>BEST</small><strong id="best">000000</strong></div>
+      <div class="stat coins-stat"><small>COINS</small><strong>◆ <span id="coins">0</span></strong></div>
+      <div class="stat"><small>SPEED</small><strong id="speed">1.0x</strong></div>
+    </section>
+
+    <section class="stage">
+      <canvas id="game" width="1000" height="440"></canvas>
+      <div id="battleHud" class="battle-hud hidden">
+        <div class="battle-title">⚔ ELITE ENEMY ENCOUNTER</div>
+        <div class="enemy-name" id="enemyName">SHADOW DEMON</div>
+        <div class="enemy-health-track"><div id="enemyHealthFill"></div></div>
+        <div class="battle-instruction">DEFEAT THE ENEMY TO CONTINUE YOUR JOURNEY</div>
+        <div id="playerHealth" class="player-health">♥ ♥ ♥</div>
+        <div id="comboDisplay" class="combo-display">COMBO x1</div>
+      </div>
+
+      <div id="startScreen" class="overlay">
+        <div class="overlay-card">
+          <div class="eyebrow">THE LEGEND AWAKENS</div>
+          <h2>SHADOW <span>YODDHA</span></h2>
+          <p>Run through the darkness. Master the blade. Become the legend.</p>
+          <button id="startBtn" class="primary-btn">BEGIN YOUR JOURNEY</button>
+          <div class="controls-hint">SPACE / ↑ JUMP &nbsp; • &nbsp; X / J ATTACK &nbsp; • &nbsp; Q SHADOW POWER</div>
+        </div>
+      </div>
+
+      <div id="pauseScreen" class="overlay hidden">
+        <div class="overlay-card">
+          <div class="eyebrow">THE BATTLE WAITS</div>
+          <h2>GAME <span>PAUSED</span></h2>
+          <button id="resumeBtn" class="primary-btn">RESUME</button>
+          <button id="pauseRestartBtn" class="secondary-btn">RESTART RUN</button>
+        </div>
+      </div>
+
+      <div id="gameOverScreen" class="overlay hidden">
+        <div class="overlay-card">
+          <div class="eyebrow">YOUR JOURNEY ENDS</div>
+          <h2>GAME <span>OVER</span></h2>
+          <div class="result-grid">
+            <div><small>YOUR SCORE</small><strong id="finalScore">0</strong></div>
+            <div><small>BEST SCORE</small><strong id="finalBest">0</strong></div>
+            <div><small>COINS</small><strong id="finalCoins">0</strong></div>
+          </div>
+          <button id="againBtn" class="primary-btn">RISE AGAIN</button>
+        </div>
+      </div>
+
+      <div id="settingsScreen" class="overlay hidden">
+        <div class="overlay-card settings-card">
+          <div class="eyebrow">CUSTOMIZE YOUR JOURNEY</div>
+          <h2>GAME <span>SETTINGS</span></h2>
+          <label class="setting-row">Sound effects <input id="soundToggle" type="checkbox" checked></label>
+          <label class="setting-row">Visual effects <input id="effectsToggle" type="checkbox" checked></label>
+          <button id="closeSettingsBtn" class="primary-btn">DONE</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="ability-bar">
+      <div class="ability">
+        <div class="ability-icon">⚔</div>
+        <div class="ability-info"><strong>SWORD ATTACK</strong><small>X / J</small></div>
+        <span class="ready">READY</span>
+      </div>
+      <div class="ability">
+        <div class="ability-icon power-icon">✦</div>
+        <div class="ability-info"><strong>SHADOW POWER</strong><small>Q</small></div>
+        <div class="cooldown-track"><div id="powerFill"></div></div>
+        <span id="powerStatus">READY</span>
+      </div>
+
+      <div class="ability phase-ability">
+        <div class="ability-icon">◈</div>
+        <div class="ability-info"><strong>SHADOW PHASE</strong><small>E</small></div>
+        <div class="cooldown-track"><div id="phaseFill"></div></div>
+        <span id="phaseStatus">READY</span>
+      </div>
+      <button id="settingsBtn" class="settings-button">⚙ SETTINGS</button>
+    </section>
+
+    <section class="mobile-controls" id="deviceControls" aria-label="Touch game controls">
+      <button id="mobileJump">JUMP</button>
+      <button id="mobileAttack">ATTACK</button>
+      <button id="mobilePower">POWER</button>
+      <button id="mobilePhase">PHASE</button>
+      <button id="mobileDodge">DODGE</button>
+    </section>
+
+    <footer>
+      <span>SHADOW YODDHA</span>
+      <span>MASTER THE SHADOW · MASTER YOUR DESTINY</span>
+    </footer>
+  </main>
+  <script src="src/main.js"></script>
+  <script src="weather.js" defer></script>
+  <script src="src/systems/Progression.js" defer></script>
+</body>
+</html>

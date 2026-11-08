@@ -1,0 +1,895 @@
+(() => {
+  "use strict";
+
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+  const groundY = 365;
+  const $ = id => document.getElementById(id);
+  const BEST_KEY = "offlineRunnerBestScore";
+
+  const ui = {
+    score: $("score"),
+    best: $("best"),
+    coins: $("coins"),
+    speed: $("speed"),
+    start: $("startScreen"),
+    pause: $("pauseScreen"),
+    over: $("gameOverScreen"),
+    settings: $("settingsScreen"),
+    finalScore: $("finalScore"),
+    finalBest: $("finalBest"),
+    finalCoins: $("finalCoins"),
+    powerFill: $("powerFill"),
+    powerStatus: $("powerStatus"),
+    battleHud: $("battleHud"),
+    enemyName: $("enemyName"),
+    enemyHealthFill: $("enemyHealthFill"),
+    playerHealth: $("playerHealth"),
+    phaseFill: $("phaseFill"),
+    phaseStatus: $("phaseStatus")
+  };
+
+  let best = Number(localStorage.getItem(BEST_KEY) || 0);
+  let score = 0, coins = 0, speed = 340;
+  let state = "start", lastTime = 0, elapsed = 0;
+  let spawnTimer = 0, coinTimer = 0, groundOffset = 0;
+  let attackTime = 0, powerTime = 0, powerCooldown = 0;
+  let enemy = null;
+  let nextEncounter = 17;
+  let enemyAttackTimer = 1.5;
+  let enemyHitCooldown = 0;
+  let playerHealth = 3;
+  let phaseTime = 0;
+  let phaseCooldown = 0;
+  let soundEnabled = localStorage.getItem("shadowSound") !== "false";
+  let effectsEnabled = localStorage.getItem("shadowEffects") !== "false";
+  let audioContext = null;
+  let obstacles = [], pickups = [], particles = [];
+
+  const player = {
+    x: 125, y: groundY - 88, w: 58, h: 88,
+    vy: 0, jumps: 0, maxJumps: 2, grounded: true,
+    animation: 0, cape: 0
+  };
+
+  const rand = (a,b) => Math.random() * (b-a) + a;
+  const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
+
+  function sound(freq=440, duration=.09, type="sine", volume=.045) {
+    if (!soundEnabled) return;
+    try {
+      audioContext ||= new (window.AudioContext || window.webkitAudioContext)();
+      if (audioContext.state === "suspended") audioContext.resume();
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq,audioContext.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(Math.max(35,freq*.55),audioContext.currentTime+duration);
+      gain.gain.setValueAtTime(volume,audioContext.currentTime);
+      gain.gain.exponentialRampToValueAtTime(.001,audioContext.currentTime+duration);
+      osc.connect(gain); gain.connect(audioContext.destination);
+      osc.start(); osc.stop(audioContext.currentTime+duration);
+    } catch (_) {}
+  }
+
+  function burst(x,y,count=12,power=180,color="#e5b54e") {
+    if (!effectsEnabled) return;
+    for(let i=0;i<count;i++) {
+      const a=rand(0,Math.PI*2), v=rand(power*.25,power);
+      particles.push({
+        x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,
+        life:rand(.25,.7),max:.7,size:rand(2,5),color
+      });
+    }
+  }
+
+  function jump() {
+    if(state!=="playing" || player.jumps>=player.maxJumps) return;
+    player.vy = player.jumps===0 ? -650 : -570;
+    player.jumps++;
+    player.grounded=false;
+    burst(player.x+25,player.y+player.h,8,90,"#d8ae55");
+    sound(player.jumps===1?530:740,.12,"triangle");
+  }
+
+  function attack() {
+    if(state!=="playing") return;
+    attackTime=.34;
+    burst(player.x+player.w+22,player.y+35,8,110,"#ffe08a");
+    sound(290,.13,"sawtooth",.035);
+
+    if (enemy && enemy.active && enemyHitCooldown <= 0) {
+    const gap = enemy.x - (player.x + player.w);
+    const verticalOverlap =
+      player.y < enemy.y + enemy.h - 4 &&
+      player.y + player.h > enemy.y + 4;
+
+    // Generous melee range so the sword can connect reliably.
+    if (gap <= 175 && gap >= -enemy.w - 20 && verticalOverlap) {
+      enemy.health = Math.max(0, enemy.health - 1);
+      enemyHitCooldown = 0.42;
+      enemy.flash = 0.22;
+      if (typeof enemy.hitStun === "number") enemy.hitStun = 0.22;
+      if (typeof enemy.state === "string") enemy.state = "recover";
+      if (typeof enemy.stateTimer === "number") enemy.stateTimer = 0.4;
+
+      burst(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#ffd166", 12);
+      sound(180, 0.12, "sawtooth");
+
+      if (ui.enemyHealthFill) {
+        ui.enemyHealthFill.style.width =
+          `${Math.max(0, enemy.health / enemy.maxHealth * 100)}%`;
+      }
+
+      if (enemy.health <= 0) {
+        enemy.active = false;
+        score += 500;
+        coins += 5;
+        burst(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#ffd166", 28);
+        sound(420, 0.3, "triangle");
+        enemy = null;
+        window.shadowProgression?.enemyDefeated();
+        ui.battleHud?.classList.add("hidden");
+      }
+    } else {
+      // Keep the swing animation, but do not damage an enemy out of reach.
+      sound(110, 0.045, "triangle");
+    }
+  }
+
+    const reach=player.x+player.w+125;
+    for(const o of obstacles) {
+      if(!o.dead && o.x>player.x+15 && o.x<reach) {
+        if(o.indestructible) {
+          // The sword bounces off ancient stone.
+          burst(o.x+o.w/2,o.y+o.h/2,7,90,"#9d8cff");
+          sound(85,.07,"triangle",.025);
+        } else {
+          o.dead=true;
+          burst(o.x+o.w/2,o.y+o.h/2,16,190,"#ffc65b");
+          sound(170,.08,"square",.025);
+        }
+      }
+    }
+  }
+
+  function shadowPower() {
+    if(state!=="playing" || powerCooldown>0) return;
+    powerTime=.75;
+    powerCooldown=5;
+    burst(player.x+player.w/2,player.y+player.h/2,42,260,"#ffd66b");
+    sound(105,.35,"sawtooth",.065);
+    for(const o of obstacles) {
+      if(!o.dead && Math.abs(o.x-(player.x+player.w/2))<285) {
+        if(o.indestructible) {
+          burst(o.x+o.w/2,o.y+o.h/2,9,110,"#9d8cff");
+        } else {
+          o.dead=true;
+          burst(o.x+o.w/2,o.y+o.h/2,20,230,"#ffe09a");
+        }
+      }
+    }
+  }
+
+  function activatePhase() {
+    if (state !== "playing" || phaseCooldown > 0) return;
+    phaseTime = 5.5;
+    phaseCooldown = 14;
+    burst(player.x+player.w/2,player.y+player.h/2,35,220,"#cda5ff");
+    sound(620,.22,"sine",.055);
+  }
+
+  function spawnObstacle() {
+    const type=Math.random();
+    let o;
+
+    if(type<.07) {
+      o={type:"ancientRock",w:68,h:62,indestructible:true};
+    } else if(type<.12) {
+      o={type:"titanRock",w:82,h:82,indestructible:true};
+    } else if(type<.17) {
+      o={type:"cursedRock",w:62,h:74,indestructible:true};
+    } else if(type<.45) {
+      o={type:"rock",w:43,h:42};
+    } else if(type<.73) {
+      o={type:"spikes",w:54,h:33};
+    } else {
+      o={type:"pillar",w:35,h:69};
+    }
+
+    o.x=W+30;
+    o.y=groundY-o.h;
+    o.dead=false;
+    obstacles.push(o);
+  }
+
+  function spawnCoin() {
+    const baseY=rand(220,305);
+    for(let i=0;i<5;i++) pickups.push({x:W+20+i*34,y:baseY+Math.sin(i*.7)*15,r:10,phase:rand(0,6)});
+  }
+
+  function rectHit(a,b) {
+    return a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y;
+  }
+
+  function reset() {
+    score=0; coins=0; speed=340; elapsed=0; spawnTimer=.7; coinTimer=1.6;
+    obstacles=[]; pickups=[]; particles=[];
+    player.y=groundY-player.h; player.vy=0; player.jumps=0; player.grounded=true;
+    attackTime=0; powerTime=0; powerCooldown=0;
+    enemy=null; nextEncounter=17; enemyAttackTimer=1.5;
+    enemyHitCooldown=0; playerHealth=3; phaseTime=0; phaseCooldown=0;
+    ui.battleHud?.classList.add("hidden");
+    ui.start.classList.add("hidden");
+    ui.pause.classList.add("hidden");
+    ui.over.classList.add("hidden");
+    state="playing"; lastTime=performance.now();
+    sound(520,.12,"triangle");
+  }
+
+  function gameOver() {
+    if(state!=="playing") return;
+    state="over";
+    const final=Math.floor(score);
+    if(final>best) {
+      best=final;
+      localStorage.setItem(BEST_KEY,String(best));
+    }
+    ui.finalScore.textContent=final;
+    ui.finalBest.textContent=best;
+    ui.finalCoins.textContent=coins;
+    ui.over.classList.remove("hidden");
+    sound(120,.5,"sawtooth",.07);
+  }
+
+  function pause() {
+    if(state==="playing") {
+      state="paused"; ui.pause.classList.remove("hidden"); sound(250,.08);
+    } else if(state==="paused") {
+      state="playing"; ui.pause.classList.add("hidden"); lastTime=performance.now(); sound(420,.08);
+    }
+  }
+
+  function beginEnemyEncounter() {
+    const level = Math.min(3, Math.floor(elapsed / 45));
+    const names = ["SHADOW DEMON", "DARK WARRIOR", "ANCIENT GUARDIAN", "SHADOW LORD"];
+    const health = 4 + level * 2;
+    enemy = {
+      x: W - 145, y: groundY - 105, w: 72, h: 105,
+      health, maxHealth: health, active: true, flash: 0,
+      name: names[level],
+      state: "approach",
+      stateTimer: 0,
+      hitStun: 0,
+      didStrike: false
+    };
+    enemyAttackTimer = 1.5;
+    enemyHitCooldown = 0;
+    ui.battleHud?.classList.remove("hidden");
+    ui.enemyName.textContent = enemy.name;
+    ui.enemyHealthFill.style.width = "100%";
+    sound(95,.45,"sawtooth",.07);
+    burst(W-110,groundY-55,30,220,"#d14e4e");
+  }
+
+  function update(dt) {
+    if (window.shadowProgression?.isTransitioning()) return;
+
+    if(state!=="playing") return;
+    elapsed+=dt;
+    score+=dt*(10+speed*.025);
+    speed=Math.min(760,340+elapsed*8.5);
+    groundOffset=(groundOffset+speed*dt)%70;
+    attackTime=Math.max(0,attackTime-dt);
+    powerTime=Math.max(0,powerTime-dt);
+    powerCooldown=Math.max(0,powerCooldown-dt);
+    phaseTime=Math.max(0,phaseTime-dt);
+    phaseCooldown=Math.max(0,phaseCooldown-dt);
+    enemyHitCooldown=Math.max(0,enemyHitCooldown-dt);
+
+    player.animation+=dt*9;
+    player.cape+=dt*5;
+    player.vy+=1650*dt;
+    player.y+=player.vy*dt;
+    if(player.y+player.h>=groundY) {
+      if(!player.grounded && player.jumps>0) burst(player.x+25,groundY,5,65);
+      player.y=groundY-player.h; player.vy=0; player.grounded=true; player.jumps=0;
+    }
+
+    if (!enemy && elapsed >= nextEncounter) {
+      beginEnemyEncounter();
+      nextEncounter += 28;
+    }
+
+    // Enemy combat: approach, telegraph, strike and recover.
+    // The running world stays paused until the enemy is defeated.
+    if (enemy && enemy.active) {
+      enemy.flash = Math.max(0, enemy.flash - dt);
+      enemy.hitStun = Math.max(0, (enemy.hitStun || 0) - dt);
+
+      const playerRight = player.x + player.w;
+      const gap = enemy.x - playerRight;
+
+      if (enemy.hitStun <= 0) {
+        if (enemy.state === "approach") {
+          if (gap > 68) {
+            enemy.x -= Math.min(gap - 68, 185 * dt);
+          } else {
+            enemy.state = "windup";
+            enemy.stateTimer = 0.72;
+            enemy.didStrike = false;
+          }
+        }
+
+        else if (enemy.state === "windup") {
+          enemy.stateTimer -= dt;
+
+          if (enemy.stateTimer <= 0) {
+            enemy.state = "strike";
+            enemy.stateTimer = 0.30;
+            enemy.didStrike = false;
+          }
+        }
+
+        else if (enemy.state === "strike") {
+          if (!enemy.didStrike) {
+            enemy.didStrike = true;
+
+            // Jumping or Shadow Phase avoids the enemy strike.
+            const dodged =
+              phaseTime > 0 ||
+              !player.grounded ||
+              player.y < groundY - player.h - 18;
+
+            if (!dodged) {
+              playerHealth--;
+
+              burst(player.x + player.w/2,
+                player.y + 38, 18, 165, "#ef6464");
+              sound(100, .22, "square", .06);
+
+              if (playerHealth <= 0) {
+                playerHealth = 0;
+                gameOver();
+              }
+            } else {
+              burst(player.x + player.w/2,
+                player.y + player.h/2, 15, 150, "#a5d6ff");
+              sound(540, .12, "triangle", .04);
+            }
+          }
+
+          enemy.stateTimer -= dt;
+
+          if (enemy.stateTimer <= 0) {
+            enemy.state = "recover";
+            enemy.stateTimer = 0.85;
+          }
+        }
+
+        else if (enemy.state === "recover") {
+          enemy.stateTimer -= dt;
+
+          if (enemy.stateTimer <= 0) {
+            enemy.state = "approach";
+          }
+        }
+      }
+
+      if (ui.enemyHealthFill) {
+        ui.enemyHealthFill.style.width =
+          (Math.max(0, enemy.health) / enemy.maxHealth * 100) + "%";
+      }
+
+      if (ui.playerHealth) {
+        ui.playerHealth.textContent =
+          "♥ ".repeat(Math.max(0, playerHealth)) +
+          "♡ ".repeat(3 - Math.max(0, playerHealth));
+      }
+
+      // Continue animating combat particles.
+      for (const p of particles) {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 360 * dt;
+        p.life -= dt;
+      }
+      particles = particles.filter(p => p.life > 0);
+
+      ui.score.textContent = String(Math.floor(score)).padStart(6, "0");
+      ui.best.textContent = String(best).padStart(6, "0");
+      ui.coins.textContent = coins;
+      ui.speed.textContent = (speed / 340).toFixed(1) + "x";
+
+      ui.powerFill.style.width = ((1 - powerCooldown / 5) * 100) + "%";
+      ui.powerStatus.textContent =
+        powerCooldown <= 0 ? "READY" : powerCooldown.toFixed(1) + "s";
+
+      if (ui.phaseFill) {
+        ui.phaseFill.style.width = ((1 - phaseCooldown / 14) * 100) + "%";
+      }
+      if (ui.phaseStatus) {
+        ui.phaseStatus.textContent =
+          phaseCooldown <= 0 ? "READY" : phaseCooldown.toFixed(1) + "s";
+      }
+
+      return;
+    }
+
+    spawnTimer-=dt;
+    if(spawnTimer<=0) {
+      spawnObstacle();
+      spawnTimer=rand(.95,1.55)*Math.max(.62,390/speed);
+    }
+    coinTimer-=dt;
+    if(coinTimer<=0) { spawnCoin(); coinTimer=rand(2.2,3.8); }
+
+    for(const o of obstacles) {
+      o.x-=speed*dt;
+      if (phaseTime>0 && !o.dead && !o.indestructible &&
+          o.x < player.x+player.w+180 &&
+          o.x+o.w > player.x-25) {
+        o.dead=true;
+        burst(o.x+o.w/2,o.y+o.h/2,9,140,"#cda5ff");
+      }
+    }
+    obstacles=obstacles.filter(o=>o.x+o.w>0&&!o.dead);
+
+    for(const c of pickups) {
+      c.x-=speed*dt;
+      c.phase+=dt*5;
+      const box={x:player.x+7,y:player.y+8,w:player.w-14,h:player.h-12};
+      if(!c.collected && rectHit(box,{x:c.x-c.r,y:c.y-c.r,w:c.r*2,h:c.r*2})) {
+        c.collected=true; coins++; score+=25;
+        burst(c.x,c.y,8,100,"#ffe477"); sound(880,.08,"sine");
+      }
+    }
+    pickups=pickups.filter(c=>c.x>-20&&!c.collected);
+
+    const body={x:player.x+13,y:player.y+10,w:player.w-24,h:player.h-13};
+    for(const o of obstacles) {
+      if(phaseTime<=0 && !o.dead && rectHit(body,{x:o.x+5,y:o.y+5,w:o.w-10,h:o.h-5})) {
+        gameOver(); break;
+      }
+    }
+
+    for(const p of particles) {
+      p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=360*dt; p.life-=dt;
+    }
+    particles=particles.filter(p=>p.life>0);
+
+    ui.score.textContent=String(Math.floor(score)).padStart(6,"0");
+    ui.best.textContent=String(best).padStart(6,"0");
+    ui.coins.textContent=coins;
+    ui.speed.textContent=(speed/340).toFixed(1)+"x";
+    ui.powerFill.style.width=((1-powerCooldown/5)*100)+"%";
+    ui.powerStatus.textContent=powerCooldown<=0?"READY":powerCooldown.toFixed(1)+"s";
+    ui.powerStatus.style.color=powerCooldown<=0?"#9ecb88":"#d6a85b";
+  }
+
+  function roundedRect(x,y,w,h,r,fill,stroke) {
+    ctx.beginPath();ctx.roundRect(x,y,w,h,r);
+    if(fill){ctx.fillStyle=fill;ctx.fill();}
+    if(stroke){ctx.strokeStyle=stroke;ctx.stroke();}
+  }
+
+  function drawBackground() {
+    const sky=ctx.createLinearGradient(0,0,0,H);
+    sky.addColorStop(0,"#101322");sky.addColorStop(.7,"#17151a");sky.addColorStop(1,"#251d17");
+    ctx.fillStyle=sky;ctx.fillRect(0,0,W,H);
+
+    ctx.save();
+    ctx.globalAlpha=.17;
+    ctx.fillStyle="#d9ad52";
+    ctx.beginPath();ctx.arc(785,105,52,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+
+    // Distant mountains
+    ctx.fillStyle="#171923";
+    ctx.beginPath();ctx.moveTo(0,290);
+    for(let x=0;x<=W;x+=100) ctx.lineTo(x,rand(215,285));
+    ctx.lineTo(W,groundY);ctx.lineTo(0,groundY);ctx.fill();
+
+    // Temple silhouettes
+    ctx.fillStyle="#0d1018";
+    for(let x=40;x<W;x+=220) {
+      ctx.fillRect(x,245,75,120);
+      ctx.beginPath();ctx.moveTo(x-8,245);ctx.lineTo(x+37,180);ctx.lineTo(x+83,245);ctx.fill();
+      ctx.fillRect(x+25,280,25,85);
+    }
+
+    // Ground
+    ctx.fillStyle="#17130f";ctx.fillRect(0,groundY,W,H-groundY);
+    ctx.strokeStyle="#b28a45";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,groundY);ctx.lineTo(W,groundY);ctx.stroke();
+    ctx.fillStyle="#594329";
+    for(let x=-groundOffset;x<W;x+=70) ctx.fillRect(x,groundY+15,35,2);
+    ctx.fillStyle="#2d241b";
+    for(let x=-groundOffset*1.4;x<W;x+=43) ctx.fillRect(x,groundY+32,15,2);
+  }
+
+  function drawPlayer() {
+    const x=player.x,y=player.y;
+    const running=player.grounded?Math.sin(player.animation)*7:0;
+    const capeWave=Math.sin(player.cape)*9;
+
+    ctx.save();
+    // Shadow aura
+    ctx.globalAlpha=.28;
+    const aura=ctx.createRadialGradient(x+28,y+45,5,x+28,y+45,75);
+    aura.addColorStop(0,"#d49a36");aura.addColorStop(1,"transparent");
+    ctx.fillStyle=aura;ctx.fillRect(x-50,y-35,160,165);
+    ctx.globalAlpha=1;
+
+    // Flowing cape
+    ctx.fillStyle="#10121b";
+    ctx.beginPath();
+    ctx.moveTo(x+16,y+28);ctx.lineTo(x-17,y+48+capeWave);
+    ctx.lineTo(x-31,y+80+capeWave);ctx.lineTo(x+7,y+72);
+    ctx.lineTo(x+27,y+37);ctx.fill();
+    ctx.strokeStyle="#9a7130";ctx.lineWidth=2;ctx.stroke();
+
+    // Legs
+    ctx.strokeStyle="#17171b";ctx.lineWidth=12;ctx.lineCap="round";
+    ctx.beginPath();ctx.moveTo(x+22,y+65);ctx.lineTo(x+18+running,y+83);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x+40,y+65);ctx.lineTo(x+43-running,y+83);ctx.stroke();
+    ctx.strokeStyle="#c69b4b";ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(x+13+running,y+85);ctx.lineTo(x+27+running,y+85);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x+37-running,y+85);ctx.lineTo(x+51-running,y+85);ctx.stroke();
+
+    // Torso armor
+    const armor=ctx.createLinearGradient(x,y+25,x+55,y+70);
+    armor.addColorStop(0,"#35343a");armor.addColorStop(.5,"#111217");armor.addColorStop(1,"#29262a");
+    roundedRect(x+11,y+27,37,43,8,armor,"#b28a45");
+    ctx.strokeStyle="#b28a45";ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(x+16,y+37);ctx.lineTo(x+44,y+57);ctx.moveTo(x+44,y+37);ctx.lineTo(x+16,y+57);ctx.stroke();
+
+    // Shoulder armor
+    ctx.fillStyle="#242329";ctx.strokeStyle="#d3a74e";ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(x+10,y+30);ctx.lineTo(x+1,y+39);ctx.lineTo(x+8,y+49);ctx.lineTo(x+20,y+43);ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x+45,y+30);ctx.lineTo(x+55,y+38);ctx.lineTo(x+49,y+49);ctx.lineTo(x+40,y+43);ctx.fill();ctx.stroke();
+
+    // Arms
+    ctx.strokeStyle="#19191f";ctx.lineWidth=9;
+    ctx.beginPath();ctx.moveTo(x+13,y+39);ctx.lineTo(x+5,y+59);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x+46,y+39);ctx.lineTo(x+52,y+55);ctx.stroke();
+
+    // Neck and face
+    ctx.fillStyle="#a97850";roundedRect(x+25,y+19,13,13,3,"#9d704f");
+    ctx.fillStyle="#b7835b";
+    ctx.beginPath();ctx.ellipse(x+31,y+16,12,14,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#17151a";
+    ctx.beginPath();ctx.moveTo(x+19,y+13);ctx.lineTo(x+22,y+1);ctx.lineTo(x+31,y-3);ctx.lineTo(x+43,y+5);ctx.lineTo(x+43,y+15);ctx.lineTo(x+37,y+9);ctx.lineTo(x+26,y+10);ctx.fill();
+    ctx.fillStyle="#ffd66b";ctx.fillRect(x+34,y+15,5,2);
+
+    // Helmet crest
+    ctx.fillStyle="#c59a45";
+    ctx.beginPath();ctx.moveTo(x+27,y+4);ctx.lineTo(x+31,y-11);ctx.lineTo(x+36,y+4);ctx.fill();
+
+    // Chest emblem
+    ctx.fillStyle="#e6bd61";ctx.beginPath();
+    ctx.moveTo(x+30,y+39);ctx.lineTo(x+36,y+47);ctx.lineTo(x+30,y+55);ctx.lineTo(x+24,y+47);ctx.fill();
+
+    // Sword arm and curved blade
+    ctx.save();
+    ctx.translate(x+51,y+54);
+    const swing=attackTime>0?Math.sin((1-attackTime/.34)*Math.PI)*1.1:Math.sin(player.animation*1.5)*.08;
+    ctx.rotate(-.65-swing);
+    ctx.strokeStyle="#bd9143";ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(9,-7);ctx.stroke();
+    ctx.strokeStyle="#f5e1a3";ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(8,-8);ctx.quadraticCurveTo(29,-31,23,-65);ctx.stroke();
+    ctx.strokeStyle="#d4a448";ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(3,-5);ctx.lineTo(14,5);ctx.stroke();
+    ctx.restore();
+
+    // Attack slash
+    if(attackTime>0) {
+      const alpha=attackTime/.34;
+      ctx.globalAlpha=alpha;
+      ctx.strokeStyle="#fff0a6";ctx.lineWidth=6;ctx.shadowColor="#ffbb36";ctx.shadowBlur=25;
+      ctx.beginPath();ctx.arc(x+63,y+35,57,-1.15,.75);ctx.stroke();
+      ctx.globalAlpha=1;ctx.shadowBlur=0;
+    }
+
+    // Shadow Phase protective aura
+    if(phaseTime>0) {
+      ctx.strokeStyle="#d4a5ff";
+      ctx.lineWidth=3;
+      ctx.shadowColor="#a96cff";
+      ctx.shadowBlur=25;
+      ctx.globalAlpha=.65+Math.sin(performance.now()*.02)*.25;
+      ctx.beginPath();
+      ctx.ellipse(x+29,y+44,47,58,0,0,Math.PI*2);
+      ctx.stroke();
+      ctx.globalAlpha=1;
+      ctx.shadowBlur=0;
+    }
+
+    // Shadow Power ring
+    if(powerTime>0) {
+      const progress=1-powerTime/.75;
+      ctx.globalAlpha=1-progress;
+      ctx.strokeStyle="#ffd76a";ctx.lineWidth=7-progress*5;ctx.shadowColor="#ffbb36";ctx.shadowBlur=30;
+      ctx.beginPath();ctx.arc(x+28,y+44,30+progress*230,0,Math.PI*2);ctx.stroke();
+      ctx.globalAlpha=1;ctx.shadowBlur=0;
+    }
+    ctx.restore();
+  }
+
+  function drawObstacle(o) {
+    ctx.save();
+    if(o.type==="rock") {
+      ctx.fillStyle="#4b4544";ctx.strokeStyle="#a58a62";ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(o.x,o.y+o.h);ctx.lineTo(o.x+5,o.y+15);ctx.lineTo(o.x+19,o.y);ctx.lineTo(o.x+36,o.y+9);ctx.lineTo(o.x+o.w,o.y+o.h);ctx.closePath();ctx.fill();ctx.stroke();
+    } else if(o.indestructible) {
+      const colors = {
+        ancientRock: ["#151b25","#8e75c9"],
+        titanRock: ["#20242b","#d3a94d"],
+        cursedRock: ["#21152c","#b65be8"]
+      };
+      const palette=colors[o.type] || ["#171923","#9d8cff"];
+
+      ctx.shadowColor=palette[1];
+      ctx.shadowBlur=o.type==="cursedRock"?22:13;
+      ctx.fillStyle=palette[0];
+      ctx.strokeStyle=palette[1];
+      ctx.lineWidth=3;
+
+      ctx.beginPath();
+      ctx.moveTo(o.x+o.w*.08,o.y+o.h);
+      ctx.lineTo(o.x+o.w*.02,o.y+o.h*.48);
+      ctx.lineTo(o.x+o.w*.25,o.y+o.h*.08);
+      ctx.lineTo(o.x+o.w*.57,o.y);
+      ctx.lineTo(o.x+o.w*.91,o.y+o.h*.25);
+      ctx.lineTo(o.x+o.w,o.y+o.h);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Ancient glowing rune marks.
+      ctx.shadowBlur=12;
+      ctx.strokeStyle=palette[1];
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.moveTo(o.x+o.w*.35,o.y+o.h*.25);
+      ctx.lineTo(o.x+o.w*.65,o.y+o.h*.48);
+      ctx.lineTo(o.x+o.w*.38,o.y+o.h*.72);
+      ctx.moveTo(o.x+o.w*.65,o.y+o.h*.48);
+      ctx.lineTo(o.x+o.w*.76,o.y+o.h*.68);
+      ctx.stroke();
+
+      ctx.fillStyle="#fff0b0";
+      ctx.beginPath();
+      ctx.arc(o.x+o.w*.52,o.y+o.h*.49,3,0,Math.PI*2);
+      ctx.fill();
+      ctx.shadowBlur=0;
+    } else if(o.type==="spikes") {
+      ctx.fillStyle="#a5a0a0";ctx.strokeStyle="#e0bb6a";ctx.lineWidth=1.5;
+      for(let i=0;i<3;i++) {
+        ctx.beginPath();ctx.moveTo(o.x+i*18,o.y+o.h);ctx.lineTo(o.x+9+i*18,o.y);ctx.lineTo(o.x+18+i*18,o.y+o.h);ctx.fill();ctx.stroke();
+      }
+    } else {
+      roundedRect(o.x,o.y,o.w,o.h,4,"#292a31","#b58b42");
+      ctx.fillStyle="#d6ad5a";ctx.fillRect(o.x+14,o.y+8,5,8);
+    }
+    ctx.restore();
+  }
+
+  function drawEnemy() {
+    if(!enemy || !enemy.active) return;
+    const x=enemy.x,y=enemy.y;
+    ctx.save();
+
+    // Dark aura
+    const aura=ctx.createRadialGradient(x+36,y+55,5,x+36,y+55,95);
+    aura.addColorStop(0,"#b02d3b88");
+    aura.addColorStop(1,"transparent");
+    ctx.fillStyle=aura;
+    ctx.fillRect(x-45,y-25,165,165);
+
+    ctx.globalAlpha=enemy.flash>0?.55:1;
+
+    // Red warning indicator while the enemy prepares its strike.
+    if (enemy.state === "windup") {
+      const pulse = 0.55 + Math.sin(performance.now() / 75) * 0.25;
+      ctx.globalAlpha = pulse;
+      ctx.fillStyle = "#ff3333";
+      ctx.font = "bold 18px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("!", x + 36, y - 18);
+      ctx.globalAlpha = enemy.flash > 0 ? 0.55 : 1;
+    }
+
+    // Cape
+    ctx.fillStyle="#190e18";
+    ctx.beginPath();
+    ctx.moveTo(x+12,y+28);ctx.lineTo(x-23,y+50);
+    ctx.lineTo(x-31,y+100);ctx.lineTo(x+60,y+85);
+    ctx.lineTo(x+60,y+30);ctx.fill();
+
+    // Legs
+    ctx.strokeStyle="#211b25";ctx.lineWidth=14;ctx.lineCap="round";
+    ctx.beginPath();ctx.moveTo(x+25,y+72);ctx.lineTo(x+17,y+101);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x+49,y+72);ctx.lineTo(x+56,y+101);ctx.stroke();
+
+    // Armor body
+    roundedRect(x+9,y+28,55,53,7,"#30202a","#a94845");
+    ctx.strokeStyle="#bd7949";ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(x+16,y+40);ctx.lineTo(x+57,y+65);ctx.stroke();
+
+    // Head and horns
+    ctx.fillStyle="#9d6655";
+    ctx.beginPath();ctx.ellipse(x+37,y+17,17,19,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#21151d";
+    ctx.beginPath();
+    ctx.moveTo(x+20,y+12);ctx.lineTo(x+10,y-5);ctx.lineTo(x+28,y+3);
+    ctx.lineTo(x+37,y-7);ctx.lineTo(x+47,y+3);ctx.lineTo(x+64,y-5);
+    ctx.lineTo(x+53,y+15);ctx.fill();
+    ctx.fillStyle="#ff493c";
+    ctx.fillRect(x+28,y+17,6,3);ctx.fillRect(x+42,y+17,6,3);
+
+    // Weapon
+    ctx.strokeStyle="#aab0bb";ctx.lineWidth=4;
+    const weaponSwing =
+      enemy.state === "windup" ? -18 :
+      enemy.state === "strike" ? 30 : 0;
+    ctx.beginPath();
+    ctx.moveTo(x+60,y+47);
+    ctx.lineTo(x+83+weaponSwing,y+9+weaponSwing*.45);
+    ctx.stroke();
+    ctx.strokeStyle="#b84b42";ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(x+55,y+43);ctx.lineTo(x+70,y+51);ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawCoin(c) {
+    ctx.save();ctx.translate(c.x,c.y);
+    const pulse=.7+Math.abs(Math.sin(c.phase))*.3;
+    ctx.scale(pulse,1);
+    ctx.shadowColor="#ffcb45";ctx.shadowBlur=17;
+    ctx.fillStyle="#e6b94e";ctx.beginPath();ctx.arc(0,0,c.r,0,Math.PI*2);ctx.fill();
+    ctx.shadowBlur=0;ctx.strokeStyle="#fff0a5";ctx.lineWidth=2;ctx.stroke();
+    ctx.fillStyle="#8b6120";ctx.font="bold 12px serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("◆",0,1);
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    for(const p of particles) {
+      ctx.globalAlpha=clamp(p.life/p.max,0,1);
+      ctx.fillStyle=p.color;ctx.shadowColor=p.color;ctx.shadowBlur=10;
+      ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();
+    }
+    ctx.globalAlpha=1;ctx.shadowBlur=0;
+  }
+
+  function render() {
+    drawBackground();
+    for(const c of pickups) drawCoin(c);
+    for(const o of obstacles) if(!o.dead) drawObstacle(o);
+    drawEnemy();
+    drawPlayer();
+    drawParticles();
+
+    if(state==="playing") {
+      ctx.fillStyle="#d6bd8b";ctx.font="12px Rajdhani";ctx.textAlign="right";
+      ctx.fillText("RUN SURVIVE CONQUER",W-22,28);
+    }
+  }
+
+  function frame(now) {
+    const dt=Math.min((now-lastTime)/1000||0,.033);
+    lastTime=now;
+    update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  function openSettings() {
+    if(state==="playing") pause();
+    ui.settings.classList.remove("hidden");
+    $("soundToggle").checked=soundEnabled;
+    $("effectsToggle").checked=effectsEnabled;
+  }
+
+
+  // Detect the current device and adapt the controls automatically.
+  function detectDevice() {
+    const touch = navigator.maxTouchPoints > 0 || "ontouchstart" in window;
+    const width = window.innerWidth;
+    const mobileUA = /Android|iPhone|iPod|Mobile/i.test(navigator.userAgent);
+    const tabletUA = /iPad|Tablet/i.test(navigator.userAgent);
+
+    document.body.classList.remove(
+      "device-mobile", "device-tablet", "device-desktop", "device-touch"
+    );
+
+    if (mobileUA || (touch && width <= 600)) {
+      document.body.classList.add("device-mobile");
+    } else if (tabletUA || (touch && width <= 1100)) {
+      document.body.classList.add("device-tablet");
+    } else if (touch) {
+      document.body.classList.add("device-touch");
+    } else {
+      document.body.classList.add("device-desktop");
+    }
+
+    const controls = $("deviceControls");
+    if (controls) {
+      controls.setAttribute(
+        "aria-label",
+        touch ? "Touch controls for mobile and tablet" : "Game controls"
+      );
+    }
+  }
+
+  detectDevice();
+  window.addEventListener("resize", detectDevice);
+  window.addEventListener("orientationchange", () => {
+    setTimeout(detectDevice, 150);
+  });
+
+  // Prevent multi-touch gestures from zooming the game accidentally.
+  document.addEventListener("gesturestart", e => e.preventDefault());
+  document.addEventListener("dblclick", e => {
+    if (e.target.closest(".stage, .mobile-controls")) e.preventDefault();
+  });
+
+  // Keyboard controls
+  window.addEventListener("keydown",e=>{
+    const code=e.code;
+    if(["Space","ArrowUp","ArrowDown"].includes(code)) e.preventDefault();
+    if(code==="Space"||code==="ArrowUp"||code==="KeyW") {
+      if(state==="start"||state==="over") reset(); else jump();
+    }
+    if(code==="KeyX"||code==="KeyJ") attack();
+    if(code==="KeyQ") shadowPower();
+    if(code==="KeyE") activatePhase();
+    if(code==="Escape"||code==="KeyP") pause();
+    if(code==="Enter"&&state!=="playing") reset();
+  });
+
+  $("startBtn").addEventListener("click",reset);
+  $("againBtn").addEventListener("click",reset);
+  $("resumeBtn").addEventListener("click",pause);
+  $("pauseBtn").addEventListener("click",pause);
+  $("pauseRestartBtn").addEventListener("click",reset);
+  $("settingsBtn").addEventListener("click",openSettings);
+  $("closeSettingsBtn").addEventListener("click",()=>ui.settings.classList.add("hidden"));
+
+  $("soundBtn").addEventListener("click",()=>{
+    soundEnabled=!soundEnabled;
+    localStorage.setItem("shadowSound",String(soundEnabled));
+    $("soundBtn").textContent=soundEnabled?"♫":"♪";
+    $("soundToggle").checked=soundEnabled;
+  });
+  $("soundToggle").addEventListener("change",e=>{
+    soundEnabled=e.target.checked;
+    localStorage.setItem("shadowSound",String(soundEnabled));
+    $("soundBtn").textContent=soundEnabled?"♫":"♪";
+  });
+  $("effectsToggle").addEventListener("change",e=>{
+    effectsEnabled=e.target.checked;
+    localStorage.setItem("shadowEffects",String(effectsEnabled));
+  });
+
+  function bindHold(id,fn) {
+    const el=$(id);
+    el.addEventListener("pointerdown",e=>{e.preventDefault();fn();});
+    el.addEventListener("contextmenu",e=>e.preventDefault());
+  }
+  bindHold("mobileJump",jump);
+  bindHold("mobileAttack",attack);
+  bindHold("mobilePower",shadowPower);
+  bindHold("mobilePhase",activatePhase);
+
+  // Tap game area to jump on touch devices
+  canvas.addEventListener("pointerdown",e=>{
+    if(e.pointerType==="touch"&&state==="playing") jump();
+  });
+
+  ui.best.textContent=String(best).padStart(6,"0");
+  $("soundBtn").textContent=soundEnabled?"♫":"♪";
+  render();
+  requestAnimationFrame(now=>{lastTime=now;requestAnimationFrame(frame);});
+})();
