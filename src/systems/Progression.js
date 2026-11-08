@@ -61,24 +61,35 @@
     const style = document.createElement("style");
     style.textContent = `
       #shadowCampaignUI {
-        right:20px;
-        position:fixed; top:12px; left:12px; z-index:9000;
-        color:#f8e7bd; font: bold 12px Arial,sans-serif;
-        background:rgba(8,8,13,.88); border:1px solid #a77b36;
-        border-radius:9px; padding:10px 14px;
-        box-shadow:0 0 18px #000; pointer-events:none;
-        letter-spacing:1px;
+        position:fixed;
+        top:12px;
+        left:12px;
+        right:auto;
+        width:128px;
+        max-width:calc(100vw - 24px);
+        box-sizing:border-box;
+        z-index:9000;
+        color:#f8e7bd;
+        font: bold 10px Arial,sans-serif;
+        line-height:1.35;
+        background:rgba(8,8,13,.94);
+        border:1px solid #a77b36;
+        border-radius:9px;
+        padding:8px 9px;
+        box-shadow:0 0 18px #000;
+        pointer-events:none;
+        letter-spacing:.4px;
       }
-      #shadowCampaignUI .gold {color:#ffd36b;font-size:15px}
+      #shadowCampaignUI .gold {color:#ffd36b;font-size:12px;white-space:nowrap}
       @media (max-width:650px) {
         #shadowCampaignUI {
-          top:62px !important;
-          right:8px !important;
-          left:auto !important;
-          max-width:155px;
-          padding:7px 9px;
+          top:8px !important;
+          left:8px !important;
+          right:auto !important;
+          width:126px;
+          max-width:calc(100vw - 16px);
+          padding:7px 8px;
           font-size:9px;
-          letter-spacing:.4px;
         }
         #shadowCampaignUI .gold {font-size:11px}
       }
