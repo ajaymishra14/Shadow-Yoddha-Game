@@ -1,0 +1,26 @@
+/* Shadow Yoddha supporting pages and monetization-ready site content */
+:root{--gold:#d9ad52;--gold-light:#ffe5a0}
+.site-content{margin:22px 0;padding:clamp(18px,4vw,32px);background:linear-gradient(145deg,#15151c,#0f1016);border:1px solid #39302a;border-radius:12px;color:#eee9df}
+.site-content h2,.site-content h3{font-family:Cinzel,Georgia,serif;color:var(--gold-light);letter-spacing:.04em}
+.site-content h2{font-size:clamp(22px,3vw,30px);margin:0 0 12px}
+.site-content h3{font-size:17px;margin:24px 0 8px}
+.site-content p,.site-content li{font-size:16px;line-height:1.7;color:#d0cbd0}
+.site-content a,.site-nav a{color:var(--gold-light);text-underline-offset:3px}
+.site-nav{display:flex;flex-wrap:wrap;gap:10px 18px;justify-content:center;margin:16px 0;padding:14px;border-top:1px solid #39343a;border-bottom:1px solid #39343a}
+.site-nav a{font-size:13px;letter-spacing:.06em}
+.site-page{min-height:100vh;padding:28px 16px;background:radial-gradient(ellipse at 50% 0%,#252016 0%,transparent 48%),#08090d;color:#f5f0e5;font-family:Rajdhani,Arial,sans-serif}
+.site-page-wrap{width:min(900px,100%);margin:0 auto}
+.site-page-header{display:flex;justify-content:space-between;align-items:center;gap:16px;padding-bottom:18px;border-bottom:1px solid #3c3329}
+.site-brand{font:800 20px Cinzel,Georgia,serif;letter-spacing:2px;color:#f5f0e5;text-decoration:none}
+.site-brand span{color:var(--gold)}
+.site-page-header a.back-link{color:var(--gold-light);font-size:14px}
+.site-page main{margin:28px 0;padding:clamp(20px,5vw,42px);background:#12131a;border:1px solid #39343a;border-radius:12px}
+.site-page h1{font:800 clamp(27px,5vw,40px) Cinzel,Georgia,serif;color:var(--gold-light);margin:0 0 8px}
+.site-page .updated{color:#a9a3a0;font-size:13px;margin-bottom:24px}
+.site-page h2{font:700 21px Cinzel,Georgia,serif;color:var(--gold);margin:26px 0 8px}
+.site-page p,.site-page li{font-size:16px;line-height:1.75;color:#d5d0d0}
+.site-page a{color:var(--gold-light)}
+.site-page ul{padding-left:22px}
+.site-page footer{text-align:center;color:#999;padding:18px 0;font-size:13px}
+.site-page .notice{border-left:3px solid var(--gold);padding:12px 16px;background:#1b1916;color:#ddd;margin:20px 0}
+@media(max-width:600px){.site-page{padding:14px 10px}.site-page-header{align-items:flex-start;flex-direction:column}.site-content{margin:14px 0}.site-content p,.site-content li,.site-page p,.site-page li{font-size:15px}}
