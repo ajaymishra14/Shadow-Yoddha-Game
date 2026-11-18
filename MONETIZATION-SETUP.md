@@ -1,27 +1,29 @@
-# Shadow Yoddha website monetization setup
+# Shadow Yoddha website monetization and AdSense readiness
 
-## Current state
-- Static HTML/CSS/JavaScript browser game.
-- No AdSense publisher ID or ad code is included.
-- No ads.txt is included because the publisher ID has not yet been issued.
-- Supporting About, How to Play, Privacy Policy, Terms and Contact pages are provided.
-- The game itself is unchanged. No advertisements are placed over the canvas or touch controls.
+## Current repository configuration
+- Static HTML/CSS/JavaScript browser game deployed through the existing Vercel-connected repository.
+- The homepage contains the AdSense loader for publisher ID `ca-pub-4497669558668906`.
+- Root `ads.txt` currently declares `google.com, pub-4497669558668906, DIRECT, f08c47fec0942fa0`.
+- Public information pages include About, How to Play, Gameplay Guide, Campaign Worlds, Privacy Policy, Terms of Use and Contact.
+- No ad unit is deliberately placed over the game canvas or touch controls.
 
-## Before applying to AdSense
-1. Review every supporting page and replace any inaccurate statements.
-2. Add a real support email if available; Contact currently links to the project's GitHub issue tracker.
-3. Create the AdSense account and add https://www.shadowyoddha.games.
-4. Use the exact site verification / AdSense code Google supplies. Do not invent a publisher ID.
-5. Configure a Google-certified consent management platform if required for visitors in the EEA, UK or Switzerland.
-6. Request site review in AdSense. Ads do not serve until both account and site are approved.
-7. After Google provides the publisher ID, publish the exact ads.txt line shown in AdSense at the domain root.
-8. Only after approval, add ad units in clearly separated page areas. Never place ads next to, over, or in a way that resembles game controls.
+## Before requesting another AdSense review
+1. Visit the live canonical domain and test every navigation link and every new page on desktop and mobile.
+2. Confirm that the live homepage, guide pages, robots.txt, sitemap.xml and ads.txt return successful responses without redirects to an unrelated host.
+3. Confirm that the publisher ID in the AdSense account, the homepage loader and ads.txt all match exactly.
+4. Read and edit the guides as the actual game creator. Correct any details that no longer match the live build and add your own screenshots, tested examples, development explanations and player tips where they genuinely help.
+5. Add a real, monitored support contact method if available. The current Contact page links to the project's public GitHub issue tracker.
+6. Make sure the Privacy Policy accurately describes every analytics, advertising, storage and consent service actually enabled. Do not claim to use a consent platform unless it is configured.
+7. Check that all pages load without login, broken resources, placeholder text, or unfinished sections.
+8. Build genuine readership and organic discovery. Do not buy traffic, use bots, click your own ads, or ask visitors to click ads.
+9. In AdSense, review the site-specific issue details again. Only after the live changes are deployed and verified should you tick the confirmation box and request a new review.
 
-## Suggested initial placement after approval
-- One responsive display ad in the page content below the game and instructions.
-- Avoid sticky/floating overlays and ads adjacent to jump/attack/power/phase controls.
-- Do not insert interstitial or rewarded game ads until using an eligible, approved product and its required API integration.
-- Never click your own ads, ask visitors to click ads, buy traffic, or use automated traffic.
+## Advertising placement after approval
+- Keep ads separate from game controls, game canvas, navigation, and buttons.
+- Do not use floating or interstitial overlays that interrupt play.
+- Do not label ads as game rewards, downloads, controls or navigation.
+- Keep the amount of advertising subordinate to the actual publisher content.
+- Follow the AdSense policies and applicable consent requirements for the countries where visitors are located.
 
-## Deploy
-The site is a static root-level website. Deploy the added HTML/CSS files and updated index.html to the existing Vercel project connected to this repository.
+## Important
+Adding pages or increasing word count does not guarantee AdSense approval. Google evaluates originality, usefulness, navigation, policy compliance and the whole site experience. A browser game by itself may be considered a non-content destination; the supporting guides should provide genuine, independently useful information and should be maintained as the game changes. Do not publish filler articles solely to increase page count.
